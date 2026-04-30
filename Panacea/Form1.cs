@@ -9,17 +9,18 @@ using System.Runtime.InteropServices;
 namespace Panacea
 {
     [ComVisible(true)]
-    public partial class Form1 : Form
+    public partial class Form1 : Form, IMessageFilter
     {
-        // Zoom percentage for the WebBrowser control
+        // --- VARIABLES DE ACTUALIZACIÓN Y CONTROL ---
+        private string versionLocal = "1.1";
+        private string urlVersionGit = "https://gist.githubusercontent.com/TecnologiaGolemanIps/b3da2a70053ad080ac4e68458e40e829/raw/3b29f811dace96ccb79fe277943b5b4628df4375/version.txt";
+        private string urlDescargaNueva = "https://github.com/TecnologiaGolemanIps/Navegador_Panacea/releases/latest";
+
         private int currentZoom = 100;
-        // UI elements for zoom control (stored as fields to avoid capture/definite-assignment issues)
         private Label lblPercent;
         private TrackBar tbZoom;
-        // ActiveX handler references to avoid COM context issues
         private object axInstance;
         private SHDocVw.DWebBrowserEvents2_NewWindow2EventHandler newWindow2Handler;
-        // Flag to prevent COM context switch deadlock during shutdown
         private volatile bool isShuttingDown = false;
         private string urlPanacea = "http://181.51.196.194/panacea";
         private string urlSilver32 = "https://github.com/TecnologiaGolemanIps/Silver_panacea/raw/main/Silverlight_x32.exe";
@@ -34,92 +35,115 @@ namespace Panacea
             this.Text = "Panacea - Ips Goleman";
             webBrowser1.ScriptErrorsSuppressed = true;
 
-            // Manejo de Pop-ups con dynamic (Sin líneas rojas)
+            // REGISTRAMOS EL FILTRO PARA CAPTURAR TECLAS EN TODA LA APP
+            Application.AddMessageFilter(this);
+
             this.Load += (s, e) => {
-                try {
+                try
+                {
                     axInstance = webBrowser1.ActiveXInstance;
-                    if (axInstance != null) {
+                    if (axInstance != null)
+                    {
                         newWindow2Handler = new SHDocVw.DWebBrowserEvents2_NewWindow2EventHandler(Ax_NewWindow2);
                         ((SHDocVw.WebBrowser)axInstance).NewWindow2 += newWindow2Handler;
                     }
-                    // ensure we detach and release COM on close
                     this.FormClosed += Form1_FormClosed;
-                } catch { }
+                }
+                catch { }
             };
+        }
+
+        // --- 🔥 FILTRO GLOBAL DE TECLADO (COMANDOS DE EMERGENCIA) ---
+        public bool PreFilterMessage(ref Message m)
+        {
+            const int WM_KEYDOWN = 0x0100;
+            if (m.Msg == WM_KEYDOWN)
+            {
+                Keys keyCode = (Keys)m.WParam & Keys.KeyCode;
+                bool control = (ModifierKeys & Keys.Control) == Keys.Control;
+                bool shift = (ModifierKeys & Keys.Shift) == Keys.Shift;
+
+                // CTRL + R: Reinicio Forzado Manual (Evita el cierre sin reinicio)
+                if (control && keyCode == Keys.R)
+                {
+                    ReiniciarAplicacionManual();
+                    return true;
+                }
+                // CTRL + SHIFT + X: Cierre Atómico
+                if (control && shift && keyCode == Keys.X)
+                {
+                    TerminarAppLimpio(false);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // MÉTODO PARA REINICIAR MANUALMENTE (Más robusto que Application.Restart)
+        private void ReiniciarAplicacionManual()
+        {
+            try
+            {
+                // Lanzamos una nueva instancia del ejecutable actual
+                Process.Start(Application.ExecutablePath);
+                // Cerramos la instancia actual de raíz
+                TerminarAppLimpio(false);
+            }
+            catch
+            {
+                Application.Restart(); // Fallback por si falla el inicio manual
+            }
+        }
+
+        private void TerminarAppLimpio(bool restart)
+        {
+            if (isShuttingDown) return;
+            isShuttingDown = true;
+
+            Application.RemoveMessageFilter(this);
+
+            try
+            {
+                if (webBrowser1 != null)
+                {
+                    webBrowser1.Stop();
+                    webBrowser1.Navigate("about:blank");
+                    webBrowser1.Dispose();
+                }
+            }
+            catch { }
+
+            if (restart) Application.Restart();
+            else Process.GetCurrentProcess().Kill();
         }
 
         private void Ax_NewWindow2(ref object ppDisp, ref bool Cancel)
         {
-            // NewWindow2 may be raised on a COM thread — marshal creation to the UI thread
             object newDisp = null;
-            try {
+            try
+            {
                 this.Invoke((Action)(() => {
                     Form1 nueva = new Form1();
                     nueva.Tag = "Secundaria";
                     nueva.Show();
-                    // capture ActiveXInstance in a local variable (cannot capture ref ppDisp)
                     try { newDisp = nueva.webBrowser1.ActiveXInstance; } catch { newDisp = null; }
                 }));
 
                 if (newDisp != null) ppDisp = newDisp;
-            } catch {
-                // If invoke fails, cancel the new window to avoid COM context problems
+            }
+            catch
+            {
                 Cancel = true;
             }
         }
 
         private void Form1_FormClosed(object sender, FormClosedEventArgs e)
         {
-            try {
-                isShuttingDown = true;
-
-                // Detach ActiveX event handler and release RCW to avoid DisconnectedContext errors
-                if (axInstance != null && newWindow2Handler != null) {
-                    try {
-                        ((SHDocVw.WebBrowser)axInstance).NewWindow2 -= newWindow2Handler;
-                    } catch { }
-
-                    // Stop navigation with non-blocking approach
-                    try {
-                        if (webBrowser1 != null) {
-                            webBrowser1.Stop();
-                            BeginInvoke((Action)(() => {
-                                try { webBrowser1.Navigate("about:blank"); } catch { }
-                            }));
-                        }
-                    } catch { }
-
-                    try {
-                        if (webBrowser1 != null && !webBrowser1.IsDisposed) {
-                            webBrowser1.Dispose();
-                        }
-                    } catch { }
-
-                    // Schedule RCW release on background thread with proper timeout
-                    var toRelease = axInstance;
-                    axInstance = null;
-                    newWindow2Handler = null;
-
-                    System.Threading.Tasks.Task.Run(() => {
-                        try {
-                            System.Threading.Thread.Sleep(500);
-                            if (toRelease != null && Marshal.IsComObject(toRelease)) {
-                                try {
-                                    while (Marshal.ReleaseComObject(toRelease) > 0) { }
-                                } catch { }
-                            }
-                        } catch { }
-                    });
-                }
-            } catch { }
+            if (!isShuttingDown) TerminarAppLimpio(false);
         }
 
-
-
-        // --- BARRA INFERIOR: DISEÑO TEMPEST ---
         private void CrearBarraHerramientasTempest()
         {
-            // Create panel for zoom controls (outside webBrowser, no overlap)
             Panel panelZoom = new Panel();
             panelZoom.Dock = DockStyle.Bottom;
             panelZoom.Height = 45;
@@ -132,7 +156,6 @@ namespace Panacea
             int yPos = 5;
             int btnHeight = 30;
 
-            // Label: Title
             Label lblZoomLabel = new Label();
             lblZoomLabel.Text = "📏 Zoom:";
             lblZoomLabel.ForeColor = System.Drawing.Color.Cyan;
@@ -143,7 +166,6 @@ namespace Panacea
             panelZoom.Controls.Add(lblZoomLabel);
             xPos += lblZoomLabel.Width + 10;
 
-            // Button: Reduce [-]
             Button bMenos = new Button();
             bMenos.Text = "−";
             bMenos.Width = 35;
@@ -158,7 +180,6 @@ namespace Panacea
             panelZoom.Controls.Add(bMenos);
             xPos += 40;
 
-            // TrackBar for zoom
             tbZoom = new TrackBar();
             tbZoom.Minimum = 10;
             tbZoom.Maximum = 500;
@@ -171,7 +192,6 @@ namespace Panacea
             panelZoom.Controls.Add(tbZoom);
             xPos += 185;
 
-            // Button: Amplify [+]
             Button bMas = new Button();
             bMas.Text = "+";
             bMas.Width = 35;
@@ -186,7 +206,6 @@ namespace Panacea
             panelZoom.Controls.Add(bMas);
             xPos += 40;
 
-            // Button: Reset to 100%
             Button b100 = new Button();
             b100.Text = "100%";
             b100.Width = 50;
@@ -201,7 +220,6 @@ namespace Panacea
             panelZoom.Controls.Add(b100);
             xPos += 55;
 
-            // Label: Percentage Display
             lblPercent = new Label();
             lblPercent.Text = $"{currentZoom}%";
             lblPercent.ForeColor = System.Drawing.Color.LimeGreen;
@@ -212,7 +230,6 @@ namespace Panacea
             panelZoom.Controls.Add(lblPercent);
             xPos += 50;
 
-            // Separator
             Label separator = new Label();
             separator.Text = "|";
             separator.ForeColor = System.Drawing.Color.FromArgb(80, 80, 80);
@@ -222,7 +239,6 @@ namespace Panacea
             panelZoom.Controls.Add(separator);
             xPos += 20;
 
-            // Button: Clear Cache (right side)
             Button btnLimpia = new Button();
             btnLimpia.Text = "🔄 Limpiar Caché";
             btnLimpia.Width = 140;
@@ -237,131 +253,128 @@ namespace Panacea
             panelZoom.Controls.Add(btnLimpia);
 
             this.Controls.Add(panelZoom);
-
-            // Keep the percent label updated when zoom changes
             SetZoom(currentZoom);
         }
 
-        // Apply zoom percentage to the webBrowser and update UI
         private void SetZoom(int percent)
         {
             if (isShuttingDown) return;
-
             currentZoom = Math.Max(10, Math.Min(500, percent));
-            try {
+            try
+            {
                 if (lblPercent != null) lblPercent.Text = $"{currentZoom}%";
                 if (tbZoom != null && tbZoom.Value != currentZoom) tbZoom.Value = currentZoom;
 
-                // First try the browser ActiveX optical zoom command (more reliable)
-                try {
+                try
+                {
                     var ax = webBrowser1?.ActiveXInstance as SHDocVw.WebBrowser;
-                    if (ax != null) {
-                        try {
-                            object pvaIn = currentZoom;
-                            // OLECMDID 63 = OLECMDID_OPTICAL_ZOOM, execopt 2 = DONT PROMPT
-                            ax.ExecWB((SHDocVw.OLECMDID)63, (SHDocVw.OLECMDEXECOPT)2, ref pvaIn, IntPtr.Zero);
-                            return;
-                        } catch { }
+                    if (ax != null)
+                    {
+                        object pvaIn = currentZoom;
+                        ax.ExecWB((SHDocVw.OLECMDID)63, (SHDocVw.OLECMDEXECOPT)2, ref pvaIn, IntPtr.Zero);
+                        return;
                     }
-                } catch { }
-
-                // Fallback: apply zoom via JavaScript/CSS (if ExecWB not available)
-                try {
-                    if (webBrowser1?.Document != null) {
-                        double scale = currentZoom / 100.0;
-                        string js =
-                            "(function(){" +
-                            $"try{{document.body.style.zoom='{currentZoom}%';}}catch(e){{}}" +
-                            $"try{{document.documentElement.style.zoom='{currentZoom}%';}}catch(e){{}}" +
-                            $"try{{document.body.style.transform='scale({scale.ToString(System.Globalization.CultureInfo.InvariantCulture)})';document.body.style.transformOrigin='0 0';}}catch(e){{}}" +
-                            $"try{{document.documentElement.style.transform='scale({scale.ToString(System.Globalization.CultureInfo.InvariantCulture)})';document.documentElement.style.transformOrigin='0 0';}}catch(e){{}}" +
-                            "})();";
-
-                        try {
-                            webBrowser1.Document.InvokeScript("execScript", new object[] { js, "JavaScript" });
-                        } catch {
-                            try { webBrowser1.Document.InvokeScript("eval", new object[] { js }); } catch { }
-                        }
-                    }
-                } catch { }
-            } catch { }
-        }
-
-        // --- 🔥 EL ZOOM QUE NO FALLA: SIMULACIÓN DE TECLADO ---
-        private void AplicarZoomTeclado(string comando)
-        {
-            if (isShuttingDown) return;
-
-            try {
-                webBrowser1.Focus();
-                // Simula presionar CTRL + la tecla deseada
-                SendKeys.Send("^" + comando); 
-            } catch { }
+                }
+                catch { }
+            }
+            catch { }
         }
 
         private void LimpiarCacheIE()
         {
-            if (MessageBox.Show("¿Limpiar temporales y reiniciar?", "Tempest", MessageBoxButtons.YesNo) == DialogResult.Yes) {
-                try {
+            if (MessageBox.Show("¿Limpiar temporales y reiniciar?", "Tempest", MessageBoxButtons.YesNo) == DialogResult.Yes)
+            {
+                try
+                {
                     Process.Start("RunDll32.exe", "InetCpl.cpl,ClearMyTracksByProcess 255");
-                    Application.Restart();
-                } catch { }
+                    ReiniciarAplicacionManual();
+                }
+                catch { }
             }
         }
 
         private void FijarEmulacionNavegador()
         {
-            try {
+            try
+            {
                 string appName = AppDomain.CurrentDomain.FriendlyName;
                 using (RegistryKey key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Internet Explorer\Main\FeatureControl\FEATURE_BROWSER_EMULATION"))
-                    // Restore previous emulation value required by the mini-navegador
                     key.SetValue(appName, 7000, RegistryValueKind.DWord);
 
-                // Paciencia infinita para que no se "teotee" el script
                 using (RegistryKey key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Internet Explorer\Styles"))
                     key.SetValue("MaxScriptStatements", -1, RegistryValueKind.DWord);
-            } catch { }
+            }
+            catch { }
         }
 
-        private void Form1_Load(object sender, EventArgs e) {
+        private void Form1_Load(object sender, EventArgs e)
+        {
             if (this.Tag?.ToString() != "Secundaria") VerificarYArrancar();
         }
 
-        private void VerificarYArrancar() {
-            if (!EstaSilverlightInstalado()) {
+        private void VerificarYArrancar()
+        {
+            ChequearVersionForzosa();
+            if (!EstaSilverlightInstalado())
+            {
                 if (MessageBox.Show("Instalando soporte Tempest...", "Soporte", MessageBoxButtons.OKCancel) == DialogResult.OK)
                     DescargarEInstalarSilencioso();
-            } else webBrowser1.Navigate(urlPanacea);
+            }
+            else webBrowser1.Navigate(urlPanacea);
         }
 
-        private bool EstaSilverlightInstalado() {
+        private void ChequearVersionForzosa()
+        {
+            try
+            {
+                using (WebClient client = new WebClient())
+                {
+                    client.CachePolicy = new System.Net.Cache.RequestCachePolicy(System.Net.Cache.RequestCacheLevel.NoCacheNoStore);
+                    string versionRemota = client.DownloadString(urlVersionGit).Trim();
+
+                    if (versionRemota != versionLocal)
+                    {
+                        string msg = "⚠️ ACTUALIZACIÓN REQUERIDA (v" + versionRemota + ")\n\nDebes instalar la versión más reciente para continuar.";
+                        if (MessageBox.Show(msg, "Tempest Security", MessageBoxButtons.OK, MessageBoxIcon.Warning) == DialogResult.OK)
+                        {
+                            Process.Start(urlDescargaNueva);
+                            TerminarAppLimpio(false);
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private bool EstaSilverlightInstalado()
+        {
             using (RegistryKey k = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Silverlight")) return k != null;
         }
 
-        private void DescargarEInstalarSilencioso() {
-            try {
+        private void DescargarEInstalarSilencioso()
+        {
+            try
+            {
                 string urlFinal = Environment.Is64BitOperatingSystem ? urlSilver64 : urlSilver32;
                 string temp = Path.Combine(Path.GetTempPath(), "Silverlight_Setup.exe");
-                using (WebClient client = new WebClient()) {
+                using (WebClient client = new WebClient())
+                {
                     client.Headers.Add("user-agent", "Mozilla/5.0");
                     client.DownloadFile(urlFinal, temp);
                 }
                 Process.Start(temp, "/q").WaitForExit();
-                Application.Restart();
-            } catch { }
+                ReiniciarAplicacionManual();
+            }
+            catch { }
         }
 
-        // --- MANEJADORES DE SEGURIDAD ---
         private void webBrowser1_DocumentCompleted(object sender, WebBrowserDocumentCompletedEventArgs e)
         {
-            try {
-                // Aplicar zoom guardado cuando el documento principal termina de cargar
-                if (!isShuttingDown && webBrowser1 != null && e.Url != null && webBrowser1.Url != null && e.Url == webBrowser1.Url)
-                {
-                    SetZoom(currentZoom);
-                }
-            } catch { }
+            try
+            {
+                if (!isShuttingDown && webBrowser1 != null && e.Url == webBrowser1.Url) SetZoom(currentZoom);
+            }
+            catch { }
         }
-        private void WebBrowser1_NewWindow(object sender, System.ComponentModel.CancelEventArgs e) { }
     }
 }
