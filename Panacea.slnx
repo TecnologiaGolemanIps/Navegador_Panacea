@@ -1,9 +1,0 @@
-<Solution>
-  <Configurations>
-    <Platform Name="Any CPU" />
-    <Platform Name="x86" />
-  </Configurations>
-  <Project Path="Panacea/Panacea.csproj" Id="d1831843-c7d5-44e3-a82b-619bf4299e91">
-    <Platform Solution="*|x86" Project="x86" />
-  </Project>
-</Solution>
