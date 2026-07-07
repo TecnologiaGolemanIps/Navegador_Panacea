@@ -306,63 +306,72 @@ a {
     transform:translateY(-2px);
 }
 
-.modal{
-
-    display:none;
-
-    position:fixed;
-
-    inset:0;
-
-    background:rgba(0,0,0,.75);
-
-    z-index:9999;
+/* Estilos compartidos para ambos fondos de modal */
+.modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.75);
+    z-index: 9999;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
 }
 
-.modal.show{
-
-    display:block;
-}
-.modal iframe{
-
-    width:100%;
-
-    height:75vh;
-
-    border:none;
-
-    border-radius:10px;
-}
-.modal-content{
-
-    background:white;
-
-    width:90%;
-
-    max-width:1100px;
-
-    margin:20px auto;
-
-    padding:20px;
-
-    border-radius:18px;
-
-    position:relative;
+.modal.show {
+    display: flex;
 }
 
-.close-modal{
-
-    position:absolute;
-
-    right:20px;
-
-    top:15px;
-
-    font-size:35px;
-
-    cursor:pointer;
+/* Base general para el cuadro blanco de cualquier modal */
+.modal-content {
+    background: white;
+    padding: 25px;
+    border-radius: 18px;
+    position: relative;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
 }
 
+.close-modal {
+    position: absolute;
+    right: 20px;
+    top: 15px;
+    font-size: 35px;
+    cursor: pointer;
+    z-index: 10;
+}
+
+/* ===================================================
+   1. ESTILOS EXCLUSIVOS PARA EL MODAL DEL VIDEO 
+   =================================================== */
+.modal-video {
+    width: 100%;
+    max-width: 800px; /* Ancho ideal para que el video no se rompa */
+}
+
+.modal-video video {
+    width: 100%;
+    height: auto;
+    max-height: 65vh;
+    border-radius: 10px;
+    background-color: #000;
+    display: block;
+}
+
+/* ===================================================
+   2. ESTILOS EXCLUSIVOS PARA EL MODAL DEL DOCUMENTO (PDF)
+   =================================================== */
+.modal-documento {
+    width: 90%;
+    max-width: 1100px; /* Tu diseño original más ancho para leer bien */
+}
+
+.modal-documento iframe {
+    width: 100%;
+    height: 70vh; /* Tu altura original para el PDF */
+    border: none;
+    border-radius: 10px;
+    display: block;
+}
 
 /* =========================
    FUNCIONALIDADES
@@ -728,49 +737,40 @@ footer{
 /* =========================
    MODAL RESPONSIVE
 ========================= */
-
-.modal-content{
-
-    width:95%;
-
-    margin:15px auto;
-
-    padding:15px;
-
-    max-height:90vh;
-
-    overflow:auto;
+.modal {
+    padding: 10px;
 }
 
-.modal iframe{
-
-    width:100%;
-
-    height:60vh;
-
-    border:none;
+.modal-content {
+    width: 100%;
+    padding: 15px;
+    max-height: 95vh;
+    overflow-y: auto;
 }
 
-.close-modal{
-
-    font-size:28px;
-
-    right:15px;
-
-    top:10px;
+/* Comportamiento del Video en móvil */
+.modal-video video {
+    width: 100%;
+    height: auto;
+    max-height: 50vh;
 }
 
-.modal-content h3{
-
-    margin-top:20px;
-
-    font-size:1.2rem;
-
-    text-align:center;
+/* Comportamiento del PDF en móvil */
+.modal-documento iframe {
+    width: 100%;
+    height: 60vh;
 }
-.modal{
 
-    padding:10px;
+.close-modal {
+    font-size: 28px;
+    right: 15px;
+    top: 10px;
+}
+
+.modal-content h3 {
+    margin-top: 5px;
+    margin-bottom: 15px;
+    font-size: 1.2rem;
 }
 
 
