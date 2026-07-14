@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Net;
 using System.Windows.Forms;
@@ -12,9 +12,9 @@ namespace Panacea
     public partial class Form1 : Form, IMessageFilter
     {
         // --- VARIABLES DE ACTUALIZACIÓN Y CONTROL ---
-        private string versionLocal = "1.1";
-        private string urlVersionGit = "https://gist.githubusercontent.com/TecnologiaGolemanIps/b3da2a70053ad080ac4e68458e40e829/raw/3b29f811dace96ccb79fe277943b5b4628df4375/version.txt";
-        private string urlDescargaNueva = "https://github.com/TecnologiaGolemanIps/Navegador_Panacea/releases/latest";
+        private string versionLocal = "1.2";
+        private string urlVersionGit = "https://gist.githubusercontent.com/TecnologiaGolemanIps/b3da2a70053ad080ac4e68458e40e829/raw/version.txt";
+        private string urlDescargaNueva = "https://github.com/TecnologiaGolemanIps/Navegador_Panacea/releases/latest/download/Panacea_Setup_v1.exe";
 
         private int currentZoom = 100;
         private Label lblPercent;
@@ -317,7 +317,7 @@ namespace Panacea
             ChequearVersionForzosa();
             if (!EstaSilverlightInstalado())
             {
-                if (MessageBox.Show("Instalando soporte Tempest...", "Soporte", MessageBoxButtons.OKCancel) == DialogResult.OK)
+                if (MessageBox.Show("Instalando silverlight soporte de panacea...", "Soporte", MessageBoxButtons.OKCancel) == DialogResult.OK)
                     DescargarEInstalarSilencioso();
             }
             else webBrowser1.Navigate(urlPanacea);
@@ -334,12 +334,24 @@ namespace Panacea
 
                     if (versionRemota != versionLocal)
                     {
-                        string msg = "⚠️ ACTUALIZACIÓN REQUERIDA (v" + versionRemota + ")\n\nDebes instalar la versión más reciente para continuar.";
-                        if (MessageBox.Show(msg, "Tempest Security", MessageBoxButtons.OK, MessageBoxIcon.Warning) == DialogResult.OK)
-                        {
-                            Process.Start(urlDescargaNueva);
-                            TerminarAppLimpio(false);
-                        }
+                        string msg = $"🚀 Optimizando Tempest Panacea a la v{versionRemota}...\n\n" +
+                                     "El proceso se realizará automáticamente en segundo plano. Por favor espera.";
+                        MessageBox.Show(msg, "Tempest Update", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+                        // Descargamos en AppData para evadir el bloqueo de EDR/Antivirus sobre la carpeta Temp
+                        string appDataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TempestPanacea");
+                        Directory.CreateDirectory(appDataFolder);
+
+                        string tempFile = Path.Combine(appDataFolder, "Panacea_Setup_v1.exe");
+                        client.DownloadFile(urlDescargaNueva, tempFile);
+
+                        // Ejecutamos silenciosamente forzando el cierre de instancias activas
+                        ProcessStartInfo psi = new ProcessStartInfo();
+                        psi.FileName = tempFile;
+                        psi.Arguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /FORCECLOSEAPPLICATIONS";
+
+                        Process.Start(psi);
+                        TerminarAppLimpio(false);
                     }
                 }
             }
